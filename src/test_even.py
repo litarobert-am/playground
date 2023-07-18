@@ -1,5 +1,5 @@
 import pytest
-from even import isEven
+from even import is_even
 
 class TestClass:
     def test_one(self):

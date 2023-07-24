@@ -1,0 +1,68 @@
+
+name: SQL Validator
+permissions:
+  contents: write
+on:
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  setup-deploy: 
+    name: Validate SQL
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check-out
+        uses: actions/checkout@v3
+        with: 
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+            
+      # Formatting SQL files 
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install sqlfluff
+
+      - name: Check for changes
+        id: getfile
+        run: |
+          git fetch origin $GITHUB_BASE_REF --depth=0
+          export DIFF=$( git diff --name-only origin/$GITHUB_BASE_REF $GITHUB_SHA )
+          echo "Diff between origin/$GITHUB_BASE_REF and $GITHUB_SHA"
+          echo "$DIFF"
+          echo "diff=$( echo "$DIFF" | sed ':a;N;$!ba;s/\n/ /g' )" >> $GITHUB_OUTPUT
+
+      - name: configure git
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: echo output
+        run: |
+              myarray=(`echo "${{ steps.getfile.outputs.diff }}" | tr '\n' ' '`)
+              echo "My array: ${myarray[@]}"
+              for i in ${myarray[@]}; do
+              if [[ $i == *".sql"* ]]; then
+              if [ -f "${i}" ]; then 
+              echo "$(cat $i)"
+              echo "File checked:"
+              echo $i 
+              bq query --dry_run --use_legacy_sql=false "$(cat $i)"
+              sqlfluff fix $i --dialect bigquery --force --config /home/runner/work/dwh-cloud-sql/dwh-cloud-sql/Scripts/Utils/.sqlfluff 
+              git add $i
+              fi
+              fi
+              done
+
+      - name: commit changed files and remove untracked files
+        run: |
+          git status
+          git commit -m "Auto updating"
+
+      - name: push code to branch
+        run: git push
